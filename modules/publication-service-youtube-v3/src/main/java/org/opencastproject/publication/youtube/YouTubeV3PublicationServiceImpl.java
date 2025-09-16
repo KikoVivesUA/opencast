@@ -60,6 +60,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -116,7 +117,7 @@ public class YouTubeV3PublicationServiceImpl
 
   /** List of available operations on jobs */
   private enum Operation {
-    Publish, Retract
+    Publish, Retract, CreatePlaylist, DeletePlaylistByTitle
   }
 
   /** workspace instance */
@@ -236,7 +237,22 @@ public class YouTubeV3PublicationServiceImpl
     } else {
       throw new IllegalArgumentException("Mediapackage does not contain track " + track.getIdentifier());
     }
+  }
 
+  @Override
+  public Job publish(final MediaPackage mediaPackage, final Track track, String playlistIDs)
+          throws PublicationException {
+    if (mediaPackage.contains(track)) {
+      try {
+        final List<String> args = Arrays.asList(MediaPackageParser.getAsXml(mediaPackage), track.getIdentifier(),
+            playlistIDs);
+        return serviceRegistry.createJob(JOB_TYPE, Operation.Publish.toString(), args, youtubePublishJobLoad);
+      } catch (ServiceRegistryException e) {
+        throw new PublicationException("Unable to create a job for track: " + track.toString(), e);
+      }
+    } else {
+      throw new IllegalArgumentException("Mediapackage does not contain track " + track.getIdentifier());
+    }
   }
 
   /**
@@ -252,8 +268,8 @@ public class YouTubeV3PublicationServiceImpl
    * @throws PublicationException
    *           if publication fails
    */
-  private Publication publish(final Job job, final MediaPackage mediaPackage, final String elementId)
-          throws PublicationException {
+  private Publication publish(final Job job, final MediaPackage mediaPackage, final String elementId,
+      String playlistIDs) throws PublicationException {
     if (mediaPackage == null) {
       throw new IllegalArgumentException("Mediapackage must be specified");
     } else if (elementId == null) {
@@ -291,16 +307,26 @@ public class YouTubeV3PublicationServiceImpl
               "Upload to YouTube exceeded " + timeoutMinutes + " minutes for episode " + episodeName);
         }
       }
-      String playlistName = StringUtils.trimToNull(truncateTitleToMaxFieldLength(mediaPackage.getSeriesTitle(), true));
-      playlistName = (playlistName == null) ? this.defaultPlaylist : playlistName;
-      final Playlist playlist;
-      final Playlist existingPlaylist = youTubeService.getMyPlaylistByTitle(playlistName);
-      if (existingPlaylist == null) {
-        playlist = youTubeService.createPlaylist(playlistName, c.getContextDescription(), mediaPackage.getSeries());
+      if (playlistIDs.isEmpty()) {
+        String playlistName = StringUtils.trimToNull(truncateTitleToMaxFieldLength(mediaPackage.getSeriesTitle(),
+            true));
+        playlistName = (playlistName == null) ? this.defaultPlaylist : playlistName;
+        final Playlist playlist;
+        final Playlist existingPlaylist = youTubeService.getMyPlaylistByTitle(playlistName);
+        if (existingPlaylist == null) {
+          playlist = youTubeService.createPlaylist(playlistName, c.getContextDescription(), mediaPackage.getSeries());
+        } else {
+          playlist = existingPlaylist;
+        }
+        youTubeService.addPlaylistItem(playlist.getId(), video.getId());
       } else {
-        playlist = existingPlaylist;
+        final String ytVideoID = video.getId();
+        for (String plID : playlistIDs.split(",")) {
+          logger.info("'playlistIDs' parameter is not null. Video assigned to playlist: {}", plID);
+          youTubeService.addPlaylistItem(plID, ytVideoID);
+        }
+        //youTubeService.addPlaylistItem(playlistIDs, video.getId());
       }
-      youTubeService.addPlaylistItem(playlist.getId(), video.getId());
       // Create new publication element
       final URL url = new URL("http://www.youtube.com/watch?v=" + video.getId());
       return PublicationImpl.publication(
@@ -380,6 +406,52 @@ public class YouTubeV3PublicationServiceImpl
     }
   }
 
+  public Playlist createPlaylist(String title, String description, String... tags) throws PublicationException {
+    logger.info("Creating playlist with title '{}'", title);
+
+    if (title == null || title.trim().isEmpty()) {
+      throw new PublicationException("Title cannot be empty");
+    }
+
+    try {
+      Playlist playlist = youTubeService.createPlaylist(title, description, tags);
+      logger.info("Created playlist: {}", playlist.getId());
+      return playlist;
+    } catch (IOException e) {
+      throw new PublicationException("Error creating playlist in YouTube", e);
+    }
+  }
+
+  public void deletePlaylistByTitle(String title) throws PublicationException {
+    logger.info("Deleting playlist with title '{}'", title);
+
+    if (title == null || title.trim().isEmpty()) {
+      throw new PublicationException("Title cannot be empty");
+    }
+
+    try {
+      String playListID = youTubeService.getMyPlaylistByTitle(title).getId();
+      youTubeService.removeMyPlaylist(playListID);
+      logger.info("Deleted Playlist: {}", playListID);
+    } catch (IOException e) {
+      throw new PublicationException("Error deleting playlist in YouTube", e);
+    }
+  }
+
+  public void deletePlaylistByID(String playlistID) throws PublicationException {
+    logger.info("Deleting playlist with ID '{}'", playlistID);
+
+    if (playlistID == null || playlistID.trim().isEmpty()) {
+      throw new PublicationException("Playlist ID cannot be empty");
+    }
+
+    try {
+      youTubeService.removeMyPlaylist(playlistID);
+      logger.info("Deleted Playlist with ID: {}", playlistID);
+    } catch (IOException e) {
+      throw new PublicationException("Error deleting playlist in YouTube", e);
+    }
+  }
   /**
    * {@inheritDoc}
    *
@@ -394,7 +466,7 @@ public class YouTubeV3PublicationServiceImpl
       MediaPackage mediapackage = MediaPackageParser.getFromXml(arguments.get(0));
       switch (op) {
         case Publish:
-          Publication publicationElement = publish(job, mediapackage, arguments.get(1));
+          Publication publicationElement = publish(job, mediapackage, arguments.get(1), arguments.get(2));
           return (publicationElement == null) ? null : MediaPackageElementParser.getAsXml(publicationElement);
         case Retract:
           Publication retractedElement = retract(job, mediapackage);

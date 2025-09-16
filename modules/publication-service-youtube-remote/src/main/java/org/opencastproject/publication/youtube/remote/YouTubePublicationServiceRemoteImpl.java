@@ -32,6 +32,9 @@ import org.opencastproject.security.api.TrustedHttpClient;
 import org.opencastproject.serviceregistry.api.RemoteBase;
 import org.opencastproject.serviceregistry.api.ServiceRegistry;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.api.services.youtube.model.Playlist;
+
 import org.apache.http.HttpResponse;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpPost;
@@ -89,6 +92,32 @@ public class YouTubePublicationServiceRemoteImpl extends RemoteBase implements Y
   }
 
   @Override
+  public Job publish(MediaPackage mediaPackage, Track track, String playlistIDs) throws PublicationException {
+    final String trackId = track.getIdentifier();
+    List<BasicNameValuePair> params = new ArrayList<BasicNameValuePair>();
+    params.add(new BasicNameValuePair("mediapackage", MediaPackageParser.getAsXml(mediaPackage)));
+    params.add(new BasicNameValuePair("elementId", trackId));
+    params.add(new BasicNameValuePair("playlistIDs", playlistIDs));
+    HttpPost post = new HttpPost();
+    HttpResponse response = null;
+    try {
+      post.setEntity(new UrlEncodedFormEntity(params, "UTF-8"));
+      response = getResponse(post);
+      if (response != null) {
+        logger.info("Publishing {} to youtube", trackId);
+        return JobParser.parseJob(response.getEntity().getContent());
+      }
+    } catch (Exception e) {
+      throw new PublicationException("Unable to publish track " + trackId + " from mediapackage "
+          + mediaPackage + " using a remote youtube publication service", e);
+    } finally {
+      closeConnection(response);
+    }
+    throw new PublicationException("Unable to publish track " + trackId + " from mediapackage "
+        + mediaPackage + " using a remote youtube publication service");
+  }
+
+  @Override
   public Job retract(MediaPackage mediaPackage) throws PublicationException {
     List<BasicNameValuePair> params = new ArrayList<BasicNameValuePair>();
     params.add(new BasicNameValuePair("mediapackage", MediaPackageParser.getAsXml(mediaPackage)));
@@ -109,6 +138,94 @@ public class YouTubePublicationServiceRemoteImpl extends RemoteBase implements Y
     }
     throw new PublicationException("Unable to retract mediapackage " + mediaPackage
             + " using a remote youtube publication service");
+  }
+
+  @Override
+  public Playlist createPlaylist(String title, String description, String... tags) throws PublicationException {
+    List<BasicNameValuePair> params = new ArrayList<BasicNameValuePair>();
+    if (title != null) {
+      params.add(new BasicNameValuePair("title", title));
+    }
+
+    if (description != null) {
+      params.add(new BasicNameValuePair("description", description));
+    }
+
+    if (tags != null && tags.length > 0) {
+      params.add(new BasicNameValuePair("tags", String.join(",", tags)));
+    }
+
+    HttpPost post = new HttpPost("/createPlaylist");
+    HttpResponse response = null;
+
+    try {
+      post.setEntity(new UrlEncodedFormEntity(params, "UTF-8"));
+      response = getResponse(post);
+      if (response != null) {
+        logger.info("Playlist {} created in youtube", title);
+        ObjectMapper mapper = new ObjectMapper();
+        return mapper.readValue(response.getEntity().getContent(), Playlist.class);
+      }
+    } catch (Exception e) {
+      throw new PublicationException("Unable to create Playlist " + title
+              + " using a remote youtube publication service", e);
+    } finally {
+      closeConnection(response);
+    }
+    throw new PublicationException("Unable to create Playlist " + title
+            + " using a remote youtube publication service");
+  }
+
+  @Override
+  public void deletePlaylistByTitle(String title) throws PublicationException {
+    List<BasicNameValuePair> params = new ArrayList<BasicNameValuePair>();
+    if (title != null) {
+      params.add(new BasicNameValuePair("title", title));
+    }
+
+    HttpPost post = new HttpPost("/deletePlaylistByTitle");
+    HttpResponse response = null;
+
+    try {
+      post.setEntity(new UrlEncodedFormEntity(params, "UTF-8"));
+      response = getResponse(post);
+      if (response != null) {
+        logger.info("Playlist with ID {} deleted from youtube", title);
+      }
+    } catch (Exception e) {
+      throw new PublicationException("Unable to delete Playlist " + title
+          + " using a remote youtube publication service", e);
+    } finally {
+      closeConnection(response);
+    }
+    throw new PublicationException("Unable to delete Playlist " + title
+        + " using a remote youtube publication service");
+  }
+
+  @Override
+  public void deletePlaylistByID(String playlistID) throws PublicationException {
+    List<BasicNameValuePair> params = new ArrayList<BasicNameValuePair>();
+    if (playlistID != null) {
+      params.add(new BasicNameValuePair("playlistID", playlistID));
+    }
+
+    HttpPost post = new HttpPost("/deletePlaylistByID");
+    HttpResponse response = null;
+
+    try {
+      post.setEntity(new UrlEncodedFormEntity(params, "UTF-8"));
+      response = getResponse(post);
+      if (response != null) {
+        logger.info("Playlist {} deleted from youtube", playlistID);
+      }
+    } catch (Exception e) {
+      throw new PublicationException("Unable to delete Playlist " + playlistID
+          + " using a remote youtube publication service", e);
+    } finally {
+      closeConnection(response);
+    }
+    throw new PublicationException("Unable to delete Playlist " + playlistID
+        + " using a remote youtube publication service");
   }
 
   @Reference

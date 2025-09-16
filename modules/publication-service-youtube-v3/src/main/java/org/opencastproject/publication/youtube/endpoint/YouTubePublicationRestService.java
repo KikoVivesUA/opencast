@@ -22,6 +22,7 @@
 package org.opencastproject.publication.youtube.endpoint;
 
 import static javax.servlet.http.HttpServletResponse.SC_BAD_REQUEST;
+import static javax.servlet.http.HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
 import static javax.servlet.http.HttpServletResponse.SC_OK;
 import static org.opencastproject.util.RestUtil.R.badRequest;
 import static org.opencastproject.util.RestUtil.R.serverError;
@@ -40,6 +41,8 @@ import org.opencastproject.util.doc.rest.RestParameter.Type;
 import org.opencastproject.util.doc.rest.RestQuery;
 import org.opencastproject.util.doc.rest.RestResponse;
 import org.opencastproject.util.doc.rest.RestService;
+
+import com.google.api.services.youtube.model.Playlist;
 
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
@@ -103,13 +106,19 @@ public class YouTubePublicationRestService extends AbstractJobProducerEndpoint {
               isRequired = true,
               description = "The mediapackage",
               type = Type.TEXT
-          ),
+            ),
           @RestParameter(
               name = "elementId",
               isRequired = true,
               description = "The element to publish",
               type = Type.STRING
-          )
+            ),
+          @RestParameter(
+              name = "playlistIDs",
+              isRequired = false,
+              description = "Comma-separated YouTube Playlist IDs",
+              type = Type.STRING
+            )
       },
       responses = {
           @RestResponse(responseCode = SC_OK, description = "An XML representation of the publication job"),
@@ -118,14 +127,15 @@ public class YouTubePublicationRestService extends AbstractJobProducerEndpoint {
   )
   public Response publish(
       @FormParam("mediapackage") final String mediaPackageXml,
-      @FormParam("elementId") final String elementId
+      @FormParam("elementId") final String elementId,
+      @FormParam("playlistIDs") final String playlistIDs
   ) {
     final Job job;
     try {
       final MediaPackage mediapackage = MediaPackageParser.getFromXml(mediaPackageXml);
       final Track track = mediapackage.getTrack(elementId);
       if (track != null) {
-        job = service.publish(mediapackage, track);
+        job = service.publish(mediapackage, track, playlistIDs);
       } else {
         return badRequest();
       }
@@ -162,6 +172,98 @@ public class YouTubePublicationRestService extends AbstractJobProducerEndpoint {
     return Response.ok(new JaxbJob(job)).build();
   }
 
+  @POST
+  @Path("/createPlaylist")
+  @Produces(MediaType.TEXT_XML)
+  @RestQuery(
+      name = "createPlaylist",
+      description = "Create a new playList in youtube",
+      returnDescription = "The playlist object returned by the YouTube API",
+      restParameters = {
+          @RestParameter(name = "title", isRequired = true, description = "Playlist title", type = Type.TEXT),
+          @RestParameter(name = "description", isRequired = true, description = "Playlist desc", type = Type.TEXT),
+          @RestParameter(name = "tags", isRequired = false, description = "List of tags comma sep", type = Type.TEXT)
+      },
+      responses = {
+          @RestResponse(responseCode = SC_OK, description = "The created playlist"),
+          @RestResponse(responseCode = SC_INTERNAL_SERVER_ERROR, description = "Error creating the playlist")
+      }
+  )
+  public Response createPlaylist(
+      @FormParam("title") final String title,
+      @FormParam("description") final String description,
+      @FormParam("tags") final String tagsCsv) {
+    try {
+      if (title == null || title.trim().isEmpty()) {
+        return Response.status(Status.BAD_REQUEST).entity("Missing playlist title").build();
+      }
+      String[] tags = (tagsCsv != null && !tagsCsv.trim().isEmpty())
+          ? tagsCsv.split("\\s*,\\s*")
+          : new String[0];
+      Playlist playlist = service.createPlaylist(title, description, tags);
+      return Response.ok(playlist.getId()).build();
+    } catch (Exception e) {
+      logger.error("Error creating playlist '{}' on YouTube", title, e);
+      return Response.serverError().entity("Error creating playlist").build();
+    }
+  }
+
+  @POST
+  @Path("/deletePlaylistByTitle")
+  @Produces(MediaType.TEXT_XML)
+  @RestQuery(
+      name = "deletePlaylistByTitle",
+      description = "Deletes a playList in youtube by its title",
+      returnDescription = "The result of this process",
+      restParameters = {
+          @RestParameter(name = "title", isRequired = true, description = "Playlist title", type = Type.TEXT)
+      },
+      responses = {
+          @RestResponse(responseCode = SC_OK, description = "The created playlist"),
+          @RestResponse(responseCode = SC_INTERNAL_SERVER_ERROR, description = "Error creating the playlist")
+      }
+  )
+  public Response deletePlaylistByTitle(
+      @FormParam("title") final String title) {
+    try {
+      if (title == null || title.trim().isEmpty()) {
+        return Response.status(Status.BAD_REQUEST).entity("Missing playlist title").build();
+      }
+      service.deletePlaylistByTitle(title);
+      return Response.ok().build();
+    } catch (Exception e) {
+      logger.error("Error deleting playlist '{}' on YouTube", title, e);
+      return Response.serverError().entity("Error deleting playlist").build();
+    }
+  }
+  @POST
+  @Path("/deletePlaylistByID")
+  @Produces(MediaType.TEXT_XML)
+  @RestQuery(
+      name = "deletePlaylistByID",
+      description = "Deletes a playList in youtube by its ID",
+      returnDescription = "The result of this process",
+      restParameters = {
+          @RestParameter(name = "playlistID", isRequired = true, description = "Playlist ID", type = Type.TEXT)
+      },
+      responses = {
+          @RestResponse(responseCode = SC_OK, description = "The created playlist"),
+          @RestResponse(responseCode = SC_INTERNAL_SERVER_ERROR, description = "Error creating the playlist")
+      }
+  )
+  public Response deletePlaylistByID(
+      @FormParam("playlistID") final String playlistID) {
+    try {
+      if (playlistID == null || playlistID.trim().isEmpty()) {
+        return Response.status(Status.BAD_REQUEST).entity("Missing playlist ID").build();
+      }
+      service.deletePlaylistByID(playlistID);
+      return Response.ok().build();
+    } catch (Exception e) {
+      logger.error("Error deleting playlist with ID '{}' on YouTube", playlistID, e);
+      return Response.serverError().entity("Error deleting playlist").build();
+    }
+  }
   /**
    * {@inheritDoc}
    *

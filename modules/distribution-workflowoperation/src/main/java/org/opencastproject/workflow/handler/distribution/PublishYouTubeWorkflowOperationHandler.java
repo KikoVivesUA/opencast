@@ -40,9 +40,11 @@ import org.opencastproject.workflow.api.ConfiguredTagsAndFlavors;
 import org.opencastproject.workflow.api.WorkflowInstance;
 import org.opencastproject.workflow.api.WorkflowOperationException;
 import org.opencastproject.workflow.api.WorkflowOperationHandler;
+import org.opencastproject.workflow.api.WorkflowOperationInstance;
 import org.opencastproject.workflow.api.WorkflowOperationResult;
 import org.opencastproject.workflow.api.WorkflowOperationResult.Action;
 
+import org.apache.commons.lang3.StringUtils;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
@@ -92,6 +94,7 @@ public class PublishYouTubeWorkflowOperationHandler extends AbstractWorkflowOper
     logger.debug("Running youtube publication workflow operation");
 
     MediaPackage mediaPackage = workflowInstance.getMediaPackage();
+    WorkflowOperationInstance operation = workflowInstance.getCurrentOperation();
 
     // Check which tags have been configured
     ConfiguredTagsAndFlavors tagsAndFlavors = getTagsAndFlavors(workflowInstance,
@@ -118,6 +121,10 @@ public class PublishYouTubeWorkflowOperationHandler extends AbstractWorkflowOper
       }
     }
 
+    // Get comma-separated playlist IDs (if any)
+    String cfgStringPlaylistIDs = StringUtils.trimToEmpty(operation.getConfiguration("playlistIDs"));
+    logger.info("K -> The list of playlistIDs tu use is {}", cfgStringPlaylistIDs);
+
     try {
       // Look for elements matching the tag
       final Collection<MediaPackageElement> elements = elementSelector.select(mediaPackage, true);
@@ -134,7 +141,8 @@ public class PublishYouTubeWorkflowOperationHandler extends AbstractWorkflowOper
       Job youtubeJob;
       try {
         Track track = mediaPackage.getTrack(elements.iterator().next().getIdentifier());
-        youtubeJob = publicationService.publish(mediaPackage, track);
+        //youtubeJob = publicationService.publish(mediaPackage, track);
+        youtubeJob = publicationService.publish(mediaPackage, track, cfgStringPlaylistIDs);
       } catch (PublicationException e) {
         throw new WorkflowOperationException(e);
       }
