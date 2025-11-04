@@ -240,12 +240,12 @@ public class YouTubeV3PublicationServiceImpl
   }
 
   @Override
-  public Job publish(final MediaPackage mediaPackage, final Track track, String playlistIDs)
+  public Job publish(final MediaPackage mediaPackage, final Track track, boolean useOpencastPlaylists)
           throws PublicationException {
     if (mediaPackage.contains(track)) {
       try {
         final List<String> args = Arrays.asList(MediaPackageParser.getAsXml(mediaPackage), track.getIdentifier(),
-            playlistIDs);
+            Boolean.toString(useOpencastPlaylists));
         return serviceRegistry.createJob(JOB_TYPE, Operation.Publish.toString(), args, youtubePublishJobLoad);
       } catch (ServiceRegistryException e) {
         throw new PublicationException("Unable to create a job for track: " + track.toString(), e);
@@ -269,7 +269,7 @@ public class YouTubeV3PublicationServiceImpl
    *           if publication fails
    */
   private Publication publish(final Job job, final MediaPackage mediaPackage, final String elementId,
-      String playlistIDs) throws PublicationException {
+      boolean useOpencastPlaylists) throws PublicationException {
     if (mediaPackage == null) {
       throw new IllegalArgumentException("Mediapackage must be specified");
     } else if (elementId == null) {
@@ -307,7 +307,7 @@ public class YouTubeV3PublicationServiceImpl
               "Upload to YouTube exceeded " + timeoutMinutes + " minutes for episode " + episodeName);
         }
       }
-      if (playlistIDs.isEmpty()) {
+      if (!useOpencastPlaylists) {
         String playlistName = StringUtils.trimToNull(truncateTitleToMaxFieldLength(mediaPackage.getSeriesTitle(),
             true));
         playlistName = (playlistName == null) ? this.defaultPlaylist : playlistName;
@@ -320,11 +320,15 @@ public class YouTubeV3PublicationServiceImpl
         }
         youTubeService.addPlaylistItem(playlist.getId(), video.getId());
       } else {
+        // 1.- Obtain the Opencast Playlists this video belongs to.
+        // 2.- We loop through these Opencast playlists checking if they are in YouTube
+        // 3.- If a Playlist is already in YouTube, then we assign this video to this Playlist
+        // 4.- If a Playlist does not exist in YouTube, we create it and after that, assign video.
         final String ytVideoID = video.getId();
-        for (String plID : playlistIDs.split(",")) {
+        /*for (String plID : playlistIDs.split(",")) {
           logger.info("'playlistIDs' parameter is not null. Video assigned to playlist: {}", plID);
           youTubeService.addPlaylistItem(plID, ytVideoID);
-        }
+        }*/
         //youTubeService.addPlaylistItem(playlistIDs, video.getId());
       }
       // Create new publication element
@@ -464,9 +468,10 @@ public class YouTubeV3PublicationServiceImpl
       op = Operation.valueOf(job.getOperation());
       List<String> arguments = job.getArguments();
       MediaPackage mediapackage = MediaPackageParser.getFromXml(arguments.get(0));
+      boolean useOpencastPlaylists = Boolean.parseBoolean(arguments.get(2));
       switch (op) {
         case Publish:
-          Publication publicationElement = publish(job, mediapackage, arguments.get(1), arguments.get(2));
+          Publication publicationElement = publish(job, mediapackage, arguments.get(1), useOpencastPlaylists);
           return (publicationElement == null) ? null : MediaPackageElementParser.getAsXml(publicationElement);
         case Retract:
           Publication retractedElement = retract(job, mediapackage);

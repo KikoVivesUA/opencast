@@ -121,9 +121,13 @@ public class PublishYouTubeWorkflowOperationHandler extends AbstractWorkflowOper
       }
     }
 
-    // Get comma-separated playlist IDs (if any)
-    String cfgStringPlaylistIDs = StringUtils.trimToEmpty(operation.getConfiguration("playlistIDs"));
-    logger.info("K -> The list of playlistIDs tu use is {}", cfgStringPlaylistIDs);
+    // If Opencast Playlists should be use or not. This value should be true or false. Default: false.
+    boolean useOpencastPlaylists = false;
+    String useOpencastPlaylistsStr = StringUtils.trimToEmpty(operation.getConfiguration("useOpencastPlaylists")).
+              toLowerCase();
+    if (!useOpencastPlaylistsStr.isEmpty()) {
+      useOpencastPlaylists = Boolean.parseBoolean(useOpencastPlaylistsStr);
+    }
 
     try {
       // Look for elements matching the tag
@@ -142,7 +146,7 @@ public class PublishYouTubeWorkflowOperationHandler extends AbstractWorkflowOper
       try {
         Track track = mediaPackage.getTrack(elements.iterator().next().getIdentifier());
         //youtubeJob = publicationService.publish(mediaPackage, track);
-        youtubeJob = publicationService.publish(mediaPackage, track, cfgStringPlaylistIDs);
+        youtubeJob = publicationService.publish(mediaPackage, track, useOpencastPlaylists);
       } catch (PublicationException e) {
         throw new WorkflowOperationException(e);
       }

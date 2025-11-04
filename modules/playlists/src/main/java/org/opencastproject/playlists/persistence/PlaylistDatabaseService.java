@@ -79,4 +79,31 @@ public interface PlaylistDatabaseService {
    * @throws PlaylistDatabaseException if there is a problem communicating with the underlying data store
    */
   Playlist deletePlaylist(Playlist playlist, String orgId) throws PlaylistDatabaseException;
+
+  /**
+   * Get the youtubePlaylistId related to this Playlist if exists
+   * @param playlistId the playlist identifier
+   * @return the youTubePlaylistId or null
+   * @throws NotFoundException if there is no playlist  with this identifier
+   * @throws PlaylistDatabaseException if there is a problem communicating with the underlying data store
+   */
+  String getYoutubePlaylistId(String playlistId) throws NotFoundException, PlaylistDatabaseException;
+
+  /**
+   * Set the youtubePlaylistId related to this Playlist if exists
+   * @param playlistId the playlist identifier
+   * @param youtubePlaylistId the YouTube playlist identifier
+   * @throws NotFoundException if there is no playlist  with this identifier
+   * @throws PlaylistDatabaseException if there is a problem communicating with the underlying data store
+   */
+  void setYoutubePlaylistId(String playlistId, String youtubePlaylistId) throws NotFoundException,
+            PlaylistDatabaseException;
+
+  /**
+   * Get the Playlist ID list of a mediapackage
+   * @param mediapackageId the mediapackage identifier
+   * @return the playlistId list or null
+   * @throws PlaylistDatabaseException if there is a problem communicating with the underlying data store
+   */
+  List<Playlist> getPlaylistsByMediapackageId(String mediapackageId) throws PlaylistDatabaseException;
 }

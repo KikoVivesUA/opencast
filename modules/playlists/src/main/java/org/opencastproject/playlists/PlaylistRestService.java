@@ -111,6 +111,7 @@ public class PlaylistRestService {
       + "        \"title\": \"Opencast Playlist\",\n"
       + "        \"description\": \"This is a playlist about Opencast\",\n"
       + "        \"creator\": \"Opencast\",\n"
+      + "        \"youtubePlaylistId\": \"\",\n"
       + "        \"entries\": [\n"
       + "            {\n"
       + "                \"contentId\": \"ID-about-opencast\",\n"
@@ -146,9 +147,9 @@ public class PlaylistRestService {
       + "xmlns:ns3=\"http://playlist.opencastproject.org\"><organization>mh_default_org</organization>"
       + "<entries><contentId>ID-av-portal</contentId><type>EVENT</type></entries><entries>"
       + "<contentId>ID-av-print</contentId><type>EVENT</type></entries><title>Opencast Playlist</title>"
-      + "<description>This is a playlist about Opencast</description><creator>Opencast</creator>"
-      + "<updated>1701787700848</updated><accessControlEntries><allow>true</allow><role>ROLE_USER_BOB</role>"
-      + "<action>read</action></accessControlEntries></ns3:playlist>";
+      + "<description>This is a playlist about Opencast</description><creator>Opencast</creator><youTubePlaylistId>"
+      + "</youTubePlaylistId><updated>1701787700848</updated><accessControlEntries><allow>true</allow>"
+      + "<role>ROLE_USER_BOB</role><action>read</action></accessControlEntries></ns3:playlist>";
 
   public static final String SAMPLE_PLAYLIST_ENTRIES_XML =
       "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
@@ -326,6 +327,73 @@ public class PlaylistRestService {
 
     return Response.ok().entity(new GenericEntity<>(jaxbPlaylists) { }).build();
   }
+
+  @GET
+  @Produces(MediaType.APPLICATION_JSON)
+  @Path("eventPlaylists/{mediaPackageId}.json")
+  @RestQuery(
+      name = "eventPlaylists",
+      description = "Get an event playlists. Playlists that you do not have read access to will not show up.",
+      returnDescription = "A JSON object containing an array.",
+      pathParameters = {
+          @RestParameter(
+              name = "mediaPackageId",
+              isRequired = true,
+              type = STRING,
+              description = "ID of the mediapackage to get related playlists."
+          ),
+      },
+      responses = {
+          @RestResponse(responseCode = SC_OK, description = "Playlists as JSON."),
+          @RestResponse(responseCode = SC_BAD_REQUEST, description = "A request parameter was illegal."),
+      })
+  public Response getEventPlaylistsAsJson(@PathParam("mediaPackageId") String mediaPackageId)
+            throws UnauthorizedException {
+    List<JaxbPlaylist> jaxbPlaylists = new ArrayList<>();
+    for (Playlist playlist : service.getEventPlaylists(mediaPackageId)) {
+      jaxbPlaylists.add(new JaxbPlaylist(playlist));
+    }
+    return Response.ok().entity(new GenericEntity<>(jaxbPlaylists) { }).build();
+  }
+
+  @POST
+  @Produces(MediaType.APPLICATION_JSON)
+  @Path("{id}/updateYouTubePlaylistId/{youTubePlaylistId}")
+  @RestQuery(
+      name = "updateYouTubePlaylistId",
+      description = "Updates Opencats playlist YouTube Playlist Id.",
+      returnDescription = "Youtube Playlist Id assigned",
+      pathParameters = {
+          @RestParameter(
+              name = "id",
+              isRequired = true,
+              type = STRING,
+              description = "Identifier of the playlist to update"
+          ),
+          @RestParameter(
+              name = "youTubePlaylistId",
+              isRequired = true,
+              type = STRING,
+              description = "Identifier of the YouTube Playlist Id"
+          )
+      },
+      responses = {
+          @RestResponse(responseCode = SC_OK, description = "Playlist updated."),
+          @RestResponse(responseCode = SC_NOT_FOUND, description = "No playlist or entry with that identifier exists."),
+          @RestResponse(responseCode = SC_UNAUTHORIZED, description = "Not authorized to perform this action")
+      })
+  public Response updateYouTubePlaylistId(
+      @PathParam("id") String playlistId,
+      @PathParam("youTubePlaylistId") String youTubePlaylistId)
+            throws NotFoundException, UnauthorizedException {
+    try {
+      service.setYoutubePlaylistId(playlistId, youTubePlaylistId);
+      return Response.ok().build();
+    } catch (Exception e) {
+      return Response.serverError().build();
+    }
+  }
+
 
   @GET
   @Produces(MediaType.APPLICATION_XML)

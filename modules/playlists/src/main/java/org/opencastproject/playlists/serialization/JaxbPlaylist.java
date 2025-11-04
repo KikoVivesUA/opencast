@@ -86,6 +86,9 @@ public class JaxbPlaylist {
   @XmlElement(name = "creator")
   private String creator;
 
+  @XmlElement(name = "youtubePlaylistId")
+  private String youtubePlaylistId;
+
   @XmlJavaTypeAdapter(JaxbPlaylist.DateAdapter.class)
   @XmlElement
   private Date updated;
@@ -125,6 +128,7 @@ public class JaxbPlaylist {
         .stream()
         .map(JaxbPlaylistAccessControlEntry::new)
         .collect(Collectors.toList());
+    this.youtubePlaylistId = playlist.getYouTubePlaylistId();
   }
 
   public Playlist toPlaylist() {
@@ -144,8 +148,8 @@ public class JaxbPlaylist {
             .orElseGet(Collections::emptyList)
             .stream()
             .map(JaxbPlaylistAccessControlEntry::toPlaylistAccessControlEntry)
-            .collect(Collectors.toList())
-
+            .collect(Collectors.toList()),
+        youtubePlaylistId
     );
   }
 
@@ -184,6 +188,7 @@ public class JaxbPlaylist {
         .append(creator, jaxbPlaylist.creator)
         .append(updated, jaxbPlaylist.updated)
         .append(accessControlEntries, jaxbPlaylist.accessControlEntries)
+        .append(youtubePlaylistId, jaxbPlaylist.youtubePlaylistId)
         .isEquals();
   }
 
@@ -198,6 +203,7 @@ public class JaxbPlaylist {
         .append(creator)
         .append(updated)
         .append(accessControlEntries)
+        .append(youtubePlaylistId)
         .toHashCode();
   }
 }

@@ -128,14 +128,15 @@ public class YouTubePublicationRestService extends AbstractJobProducerEndpoint {
   public Response publish(
       @FormParam("mediapackage") final String mediaPackageXml,
       @FormParam("elementId") final String elementId,
-      @FormParam("playlistIDs") final String playlistIDs
+      @FormParam("useOpencastPlaylists") final String useOpencastPlaylistsStr
   ) {
     final Job job;
     try {
       final MediaPackage mediapackage = MediaPackageParser.getFromXml(mediaPackageXml);
       final Track track = mediapackage.getTrack(elementId);
+      final boolean useOpencastPlaylists = Boolean.parseBoolean(useOpencastPlaylistsStr);
       if (track != null) {
-        job = service.publish(mediapackage, track, playlistIDs);
+        job = service.publish(mediapackage, track, useOpencastPlaylists);
       } else {
         return badRequest();
       }

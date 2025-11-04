@@ -92,12 +92,12 @@ public class YouTubePublicationServiceRemoteImpl extends RemoteBase implements Y
   }
 
   @Override
-  public Job publish(MediaPackage mediaPackage, Track track, String playlistIDs) throws PublicationException {
+  public Job publish(MediaPackage mediaPackage, Track track, boolean useOpencastPlaylists) throws PublicationException {
     final String trackId = track.getIdentifier();
     List<BasicNameValuePair> params = new ArrayList<BasicNameValuePair>();
     params.add(new BasicNameValuePair("mediapackage", MediaPackageParser.getAsXml(mediaPackage)));
     params.add(new BasicNameValuePair("elementId", trackId));
-    params.add(new BasicNameValuePair("playlistIDs", playlistIDs));
+    params.add(new BasicNameValuePair("useOpencastPlaylists", Boolean.toString(useOpencastPlaylists)));
     HttpPost post = new HttpPost();
     HttpResponse response = null;
     try {
