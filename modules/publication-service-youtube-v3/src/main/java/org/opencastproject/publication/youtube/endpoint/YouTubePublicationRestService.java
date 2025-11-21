@@ -114,9 +114,9 @@ public class YouTubePublicationRestService extends AbstractJobProducerEndpoint {
               type = Type.STRING
             ),
           @RestParameter(
-              name = "playlistIDs",
+              name = "useOpencastPlaylists",
               isRequired = false,
-              description = "Comma-separated YouTube Playlist IDs",
+              description = "If Opencast Playlists should be considered",
               type = Type.STRING
             )
       },
@@ -145,6 +145,41 @@ public class YouTubePublicationRestService extends AbstractJobProducerEndpoint {
       return serverError();
     }
     return Response.ok(new JaxbJob(job)).build();
+  }
+
+  @POST
+  @Path("/publishOpencastPlaylist")
+  @Produces(MediaType.TEXT_XML)
+  @RestQuery(name = "publishOpencastPlaylist",
+      description = "Publish an Opencast Playlist to youtube publication channel",
+      returnDescription = "The job that can be used to track the publication",
+      restParameters = {
+          @RestParameter(
+              name = "opencastPlaylistId",
+              isRequired = true,
+              description = "The Opencast Playlist Id",
+              type = Type.STRING
+          )
+      },
+      responses = {
+          @RestResponse(responseCode = SC_OK, description = "An XML representation of the publication job"),
+          @RestResponse(responseCode = SC_BAD_REQUEST, description = "Opencast playlist does not exist")
+      }
+  )
+  public Response publishOpencastPlaylist(
+      @FormParam("opencastPlaylistId") final String opencastPlaylistId
+  ) {
+    try {
+      if (opencastPlaylistId != null && !opencastPlaylistId.isEmpty()) {
+        service.publishOpencastPlaylist(opencastPlaylistId);
+      } else {
+        return badRequest();
+      }
+    } catch (Exception e) {
+      logger.warn("Error publishing Opencast Playlist '{}' to YouTube", opencastPlaylistId, e);
+      return serverError();
+    }
+    return Response.ok().build();
   }
 
   @POST

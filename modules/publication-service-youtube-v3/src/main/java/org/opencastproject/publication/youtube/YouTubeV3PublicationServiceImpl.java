@@ -30,6 +30,7 @@ import org.opencastproject.mediapackage.MediaPackageParser;
 import org.opencastproject.mediapackage.Publication;
 import org.opencastproject.mediapackage.PublicationImpl;
 import org.opencastproject.mediapackage.Track;
+import org.opencastproject.playlists.PlaylistService;
 import org.opencastproject.publication.api.PublicationException;
 import org.opencastproject.publication.api.YouTubePublicationService;
 import org.opencastproject.publication.youtube.auth.ClientCredentials;
@@ -40,6 +41,7 @@ import org.opencastproject.serviceregistry.api.ServiceRegistry;
 import org.opencastproject.serviceregistry.api.ServiceRegistryException;
 import org.opencastproject.util.LoadUtil;
 import org.opencastproject.util.MimeTypes;
+import org.opencastproject.util.NotFoundException;
 import org.opencastproject.util.XProperties;
 import org.opencastproject.workspace.api.Workspace;
 
@@ -157,6 +159,9 @@ public class YouTubeV3PublicationServiceImpl
    */
   private int maxFieldLength;
 
+  @Reference
+  private PlaylistService playlistService;
+
   /**
    * Creates a new instance of the youtube publication service.
    */
@@ -255,7 +260,7 @@ public class YouTubeV3PublicationServiceImpl
     }
   }
 
-  /**
+   /**
    * Publishes the element to the publication channel and returns a reference to the published version of the element.
    *
    * @param job
@@ -308,6 +313,7 @@ public class YouTubeV3PublicationServiceImpl
         }
       }
       if (!useOpencastPlaylists) {
+        logger.info("Param 'useOpencastPlaylists' is FALSE.");
         String playlistName = StringUtils.trimToNull(truncateTitleToMaxFieldLength(mediaPackage.getSeriesTitle(),
             true));
         playlistName = (playlistName == null) ? this.defaultPlaylist : playlistName;
@@ -321,15 +327,23 @@ public class YouTubeV3PublicationServiceImpl
         youTubeService.addPlaylistItem(playlist.getId(), video.getId());
       } else {
         // 1.- Obtain the Opencast Playlists this video belongs to.
-        // 2.- We loop through these Opencast playlists checking if they are in YouTube
+        // 2.- Loop through these Opencast playlists checking if they are in YouTube
         // 3.- If a Playlist is already in YouTube, then we assign this video to this Playlist
         // 4.- If a Playlist does not exist in YouTube, we create it and after that, assign video.
         final String ytVideoID = video.getId();
-        /*for (String plID : playlistIDs.split(",")) {
-          logger.info("'playlistIDs' parameter is not null. Video assigned to playlist: {}", plID);
-          youTubeService.addPlaylistItem(plID, ytVideoID);
-        }*/
-        //youTubeService.addPlaylistItem(playlistIDs, video.getId());
+        final String mediaPackageId = mediaPackage.getIdentifier().toString();
+        List<org.opencastproject.playlists.Playlist> pls = playlistService.getEventPlaylists(mediaPackageId);
+        logger.info("Param 'useOpencastPlaylists' is TRUE. Getting Event '{}' OC playlists.", mediaPackageId);
+        for (org.opencastproject.playlists.Playlist playlist : pls) {
+          String ytPlaylistId = playlistService.getYoutubePlaylistId(playlist.getId());
+          if (ytPlaylistId != null && !ytPlaylistId.isEmpty()) {
+            youTubeService.addPlaylistItem(ytPlaylistId, ytVideoID);
+            logger.info("OC playlist '{}' is already in YouTube as '{}'. Assigning video to this playlist.",
+                      playlist.getId(), ytPlaylistId);
+          } else {
+            logger.info("OC playlist '{}' does not exist in YouTube. Nothing else to do.", playlist.getId());
+          }
+        }
       }
       // Create new publication element
       final URL url = new URL("http://www.youtube.com/watch?v=" + video.getId());
@@ -407,6 +421,40 @@ public class YouTubeV3PublicationServiceImpl
         youTubeService.removeVideoFromPlaylist(playlist.getId(), videoId);
       }
       youTubeService.removeMyVideo(videoId);
+    }
+  }
+
+  /**
+   * Publishes an Opencast Playlist to YouTube
+   *
+   * @param opencastPlaylistId
+   *          the Opencast Playlist Id
+   * @throws PublicationException
+   *           if publication fails
+   */
+  public void publishOpencastPlaylist(final String opencastPlaylistId) throws PublicationException {
+    if (opencastPlaylistId == null) {
+      throw new IllegalArgumentException("Opencast Playlist Id must be specified");
+    }
+    try {
+      // Get the Opencast Playlist
+      org.opencastproject.playlists.Playlist ocpl = playlistService.getPlaylistById(opencastPlaylistId);
+      if (ocpl != null) {
+        // It is already in YouTube?
+        final String ytPlaylitsId = playlistService.getYoutubePlaylistId(opencastPlaylistId);
+        final Playlist playlist;
+        if (ytPlaylitsId.isEmpty()) {
+          logger.info("Creating Opencast playlist {} in YouTube.", opencastPlaylistId);
+          final String plTitle = StringUtils.trimToNull(truncateTitleToMaxFieldLength(ocpl.getTitle(),
+              true));
+          playlist = youTubeService.createPlaylist(plTitle, ocpl.getDescription());
+          playlistService.setYoutubePlaylistId(opencastPlaylistId, playlist.getId());
+        }
+      } else {
+        throw new NotFoundException("Opencast Playlist '" + opencastPlaylistId + "' not found.");
+      }
+    } catch (Exception e) {
+      throw new PublicationException("Error publishing playlist in YouTube", e);
     }
   }
 

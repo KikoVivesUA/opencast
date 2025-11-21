@@ -66,6 +66,16 @@ public interface YouTubePublicationService {
   Job publish(MediaPackage mediaPackage, Track track, boolean useOpencastPlaylists) throws PublicationException;
 
   /**
+   * Publishes an Opencast Playlist.
+   *
+   * @param opencastPlaylistId
+   *          the media package
+   * @throws PublicationException
+   *           if there was a problem publishing the media
+   */
+  void publishOpencastPlaylist(String opencastPlaylistId) throws PublicationException;
+
+  /**
    * Retract a media package element from the distribution channel.
    *
    * @param mediaPackage

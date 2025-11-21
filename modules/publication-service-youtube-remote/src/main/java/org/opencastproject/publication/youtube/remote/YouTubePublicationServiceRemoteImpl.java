@@ -118,6 +118,28 @@ public class YouTubePublicationServiceRemoteImpl extends RemoteBase implements Y
   }
 
   @Override
+  public void publishOpencastPlaylist(String opencastPlaylistId) throws PublicationException {
+    List<BasicNameValuePair> params = new ArrayList<BasicNameValuePair>();
+    params.add(new BasicNameValuePair("opencastPlaylistId", opencastPlaylistId));
+    HttpPost post = new HttpPost();
+    HttpResponse response = null;
+    try {
+      post.setEntity(new UrlEncodedFormEntity(params, "UTF-8"));
+      response = getResponse(post);
+      if (response != null) {
+        logger.info("Publishing playlist {} to youtube", opencastPlaylistId);
+      }
+    } catch (Exception e) {
+      throw new PublicationException("Unable to publish playlist " + opencastPlaylistId
+                + " using a remote youtube publication service", e);
+    } finally {
+      closeConnection(response);
+    }
+    throw new PublicationException("Unable to publish playlist " + opencastPlaylistId
+              + " using a remote youtube publication service");
+  }
+
+  @Override
   public Job retract(MediaPackage mediaPackage) throws PublicationException {
     List<BasicNameValuePair> params = new ArrayList<BasicNameValuePair>();
     params.add(new BasicNameValuePair("mediapackage", MediaPackageParser.getAsXml(mediaPackage)));

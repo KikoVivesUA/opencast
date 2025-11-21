@@ -146,7 +146,7 @@ public class PlaylistService {
   }
 
   /**
-   * Returns a playlist from the database by its id
+   * Returns the list of Playlists a mediapackage belongs to
    * @param mediaPackageId mediapackage id
    * @return A list of {@link Playlist}s
    * @throws IllegalStateException If something went wrong in the database service
@@ -177,6 +177,27 @@ public class PlaylistService {
         throw new UnauthorizedException("User does not have write permissions");
       }
       persistence.setYoutubePlaylistId(playlistId, youTubePlaylistId);
+    } catch (PlaylistDatabaseException e) {
+      throw new IllegalStateException("Could not get playlist from database with id ", e);
+    }
+  }
+
+  /**
+   * Updates an Opencast playlist with a YouTube Playlist Id
+   * @param playlistId Id of the Opencast Playlist.
+   * @return youTubePlaylist ID if exists
+   * @throws NotFoundException If no playlist with the given id could be found
+   * @throws IllegalStateException If something went wrong in the database service
+   * @throws UnauthorizedException If the user does not have read access for the playlist
+   */
+  public String getYoutubePlaylistId(String playlistId)
+            throws NotFoundException, IllegalStateException, UnauthorizedException {
+    try {
+      Playlist existingPlaylist = persistence.getPlaylist(playlistId);
+      if (!checkPermission(existingPlaylist, Permissions.Action.READ)) {
+        throw new UnauthorizedException("User does not have read permissions");
+      }
+      return persistence.getYoutubePlaylistId(playlistId);
     } catch (PlaylistDatabaseException e) {
       throw new IllegalStateException("Could not get playlist from database with id ", e);
     }

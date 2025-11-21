@@ -127,6 +127,9 @@ public class PublishYouTubeWorkflowOperationHandler extends AbstractWorkflowOper
               toLowerCase();
     if (!useOpencastPlaylistsStr.isEmpty()) {
       useOpencastPlaylists = Boolean.parseBoolean(useOpencastPlaylistsStr);
+      logger.info("Param 'useOpencastPlaylists' passed. Value: {}", Boolean.toString(useOpencastPlaylists));
+    } else {
+      logger.info("Param 'useOpencastPlaylists' not passed. FALSE assumed.");
     }
 
     try {
