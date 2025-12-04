@@ -46,6 +46,8 @@ import org.opencastproject.util.XProperties;
 import org.opencastproject.workspace.api.Workspace;
 
 import com.google.api.services.youtube.model.Playlist;
+import com.google.api.services.youtube.model.PlaylistItem;
+import com.google.api.services.youtube.model.PlaylistItemListResponse;
 import com.google.api.services.youtube.model.SearchResult;
 import com.google.api.services.youtube.model.Video;
 
@@ -68,6 +70,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.Dictionary;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.UUID;
 
@@ -291,29 +294,30 @@ public class YouTubeV3PublicationServiceImpl
       throw new IllegalArgumentException("Mediapackage element cannot be XML");
     }
     try {
-      // create context strategy for publication
-      final YouTubePublicationAdapter c = new YouTubePublicationAdapter(mediaPackage, workspace);
-      final File file = workspace.get(element.getURI());
-      final String episodeName = c.getEpisodeName();
-      final UploadProgressListener operationProgressListener = new UploadProgressListener(mediaPackage, file);
-      final String privacyStatus = makeVideosPrivate ? "private" : "public";
-      final VideoUpload videoUpload = new VideoUpload(
-          truncateTitleToMaxFieldLength(episodeName, false),
-          c.getEpisodeDescription(), privacyStatus,
-          file, operationProgressListener, tags);
-      final Video video = youTubeService.addVideoToMyChannel(videoUpload);
-      final int timeoutMinutes = 60;
-      final long startUploadMilliseconds = new Date().getTime();
-      while (!operationProgressListener.isComplete()) {
-        Thread.sleep(POLL_MILLISECONDS);
-        final long howLongWaitingMinutes = (new Date().getTime() - startUploadMilliseconds) / 60000;
-        if (howLongWaitingMinutes > timeoutMinutes) {
-          throw new PublicationException(
-              "Upload to YouTube exceeded " + timeoutMinutes + " minutes for episode " + episodeName);
-        }
-      }
+      Video video = null;
       if (!useOpencastPlaylists) {
         logger.info("Param 'useOpencastPlaylists' is FALSE.");
+        // create context strategy for publication
+        final YouTubePublicationAdapter c = new YouTubePublicationAdapter(mediaPackage, workspace);
+        final File file = workspace.get(element.getURI());
+        final String episodeName = c.getEpisodeName();
+        final UploadProgressListener operationProgressListener = new UploadProgressListener(mediaPackage, file);
+        final String privacyStatus = makeVideosPrivate ? "private" : "public";
+        final VideoUpload videoUpload = new VideoUpload(
+            truncateTitleToMaxFieldLength(episodeName, false),
+            c.getEpisodeDescription(), privacyStatus,
+            file, operationProgressListener, tags);
+        video = youTubeService.addVideoToMyChannel(videoUpload);
+        final int timeoutMinutes = 60;
+        final long startUploadMilliseconds = new Date().getTime();
+        while (!operationProgressListener.isComplete()) {
+          Thread.sleep(POLL_MILLISECONDS);
+          final long howLongWaitingMinutes = (new Date().getTime() - startUploadMilliseconds) / 60000;
+          if (howLongWaitingMinutes > timeoutMinutes) {
+            throw new PublicationException(
+                "Upload to YouTube exceeded " + timeoutMinutes + " minutes for episode " + episodeName);
+          }
+        }
         String playlistName = StringUtils.trimToNull(truncateTitleToMaxFieldLength(mediaPackage.getSeriesTitle(),
             true));
         playlistName = (playlistName == null) ? this.defaultPlaylist : playlistName;
@@ -325,30 +329,78 @@ public class YouTubeV3PublicationServiceImpl
           playlist = existingPlaylist;
         }
         youTubeService.addPlaylistItem(playlist.getId(), video.getId());
+        // Create new publication element
+        final URL url = new URL("http://www.youtube.com/watch?v=" + video.getId());
+        return PublicationImpl.publication(
+            UUID.randomUUID().toString(), CHANNEL_NAME, url.toURI(), MimeTypes.parseMimeType(MIME_TYPE));
       } else {
+        final String mediaPackageId = mediaPackage.getIdentifier().toString();
+        String ytVideoID = "";
+        logger.info("Param 'useOpencastPlaylists' is TRUE. Getting Event '{}' OC playlists.", mediaPackageId);
+        // First we check if the video is already in Youtube:
+        boolean alreadyInYoutube = false;
+        Publication[] publications = mediaPackage.getPublications();
+        for (Publication pub : publications) {
+          String channel = pub.getChannel();
+          if ("youtube".equalsIgnoreCase(channel)) {
+            alreadyInYoutube = true;
+            ytVideoID = pub.getURI().toString().replace("http://www.youtube.com/watch?v=","");
+            logger.info("Mediapackage '{}' is already published in YouTube.", mediaPackage.getIdentifier());
+          }
+        }
+        // If the video is not in YouTube, first it is uploaded:
+        if (!alreadyInYoutube) {
+          logger.info("Mediapackage '{}' is NOT in YouTube. First upload it. ", mediaPackage.getIdentifier());
+          // create context strategy for publication
+          final YouTubePublicationAdapter c = new YouTubePublicationAdapter(mediaPackage, workspace);
+          final File file = workspace.get(element.getURI());
+          final String episodeName = c.getEpisodeName();
+          final UploadProgressListener operationProgressListener = new UploadProgressListener(mediaPackage, file);
+          final String privacyStatus = makeVideosPrivate ? "private" : "public";
+          final VideoUpload videoUpload = new VideoUpload(
+              truncateTitleToMaxFieldLength(episodeName, false),
+              c.getEpisodeDescription(), privacyStatus,
+              file, operationProgressListener, tags);
+          video = youTubeService.addVideoToMyChannel(videoUpload);
+          ytVideoID = video.getId();
+          final int timeoutMinutes = 60;
+          final long startUploadMilliseconds = new Date().getTime();
+          while (!operationProgressListener.isComplete()) {
+            Thread.sleep(POLL_MILLISECONDS);
+            final long howLongWaitingMinutes = (new Date().getTime() - startUploadMilliseconds) / 60000;
+            if (howLongWaitingMinutes > timeoutMinutes) {
+              throw new PublicationException(
+                  "Upload to YouTube exceeded " + timeoutMinutes + " minutes for episode " + episodeName);
+            }
+          }
+        }
+
+        // Now Playlists Logic:
         // 1.- Obtain the Opencast Playlists this video belongs to.
         // 2.- Loop through these Opencast playlists checking if they are in YouTube
         // 3.- If a Playlist is already in YouTube, then we assign this video to this Playlist
         // 4.- If a Playlist does not exist in YouTube, we create it and after that, assign video.
-        final String ytVideoID = video.getId();
-        final String mediaPackageId = mediaPackage.getIdentifier().toString();
         List<org.opencastproject.playlists.Playlist> pls = playlistService.getEventPlaylists(mediaPackageId);
-        logger.info("Param 'useOpencastPlaylists' is TRUE. Getting Event '{}' OC playlists.", mediaPackageId);
         for (org.opencastproject.playlists.Playlist playlist : pls) {
           String ytPlaylistId = playlistService.getYoutubePlaylistId(playlist.getId());
           if (ytPlaylistId != null && !ytPlaylistId.isEmpty()) {
-            youTubeService.addPlaylistItem(ytPlaylistId, ytVideoID);
-            logger.info("OC playlist '{}' is already in YouTube as '{}'. Assigning video to this playlist.",
-                      playlist.getId(), ytPlaylistId);
+            if (!ytVideoExistsInytPlaylist(ytPlaylistId, ytVideoID)) {
+              youTubeService.addPlaylistItem(ytPlaylistId, ytVideoID);
+              logger.info("OC playlist '{}' is already in YouTube as '{}'. Assigning video to this playlist.",
+                  playlist.getId(), ytPlaylistId);
+            } else {
+              logger.info("OC playlist '{}' is already in YouTube as '{}' but ytVideo '{}' is already in it.",
+                  playlist.getId(), ytPlaylistId, ytVideoID);
+            }
           } else {
             logger.info("OC playlist '{}' does not exist in YouTube. Nothing else to do.", playlist.getId());
           }
         }
+        // Create new publication element
+        final URL url = new URL("http://www.youtube.com/watch?v=" + ytVideoID);
+        return PublicationImpl.publication(
+            UUID.randomUUID().toString(), CHANNEL_NAME, url.toURI(), MimeTypes.parseMimeType(MIME_TYPE));
       }
-      // Create new publication element
-      final URL url = new URL("http://www.youtube.com/watch?v=" + video.getId());
-      return PublicationImpl.publication(
-          UUID.randomUUID().toString(), CHANNEL_NAME, url.toURI(), MimeTypes.parseMimeType(MIME_TYPE));
     } catch (Exception e) {
       logger.error("failed publishing to YouTube", e);
       logger.warn("Error publishing {}, {}", element, e.getMessage());
@@ -361,6 +413,29 @@ public class YouTubeV3PublicationServiceImpl
             e);
       }
     }
+  }
+
+  public Boolean ytVideoExistsInytPlaylist(String ytPlaylist, String ytVideo) throws IOException {
+    final List<PlaylistItem> playlistItems = new LinkedList<PlaylistItem>();
+    Boolean exists = false;
+    boolean done = false;
+    String nextPageToken = null;
+    while (!done) {
+      final PlaylistItemListResponse searchResult = youTubeService.getPlaylistItems(ytPlaylist, nextPageToken, 50);
+      playlistItems.addAll(searchResult.getItems());
+      nextPageToken = searchResult.getNextPageToken();
+      done = nextPageToken == null;
+    }
+
+    PlaylistItem playlistItem = null;
+    for (final PlaylistItem next : playlistItems) {
+      final String id = next.getSnippet().getResourceId().getVideoId();
+      if (ytVideo.equals(id)) {
+        exists = true;
+        break;
+      }
+    }
+    return exists;
   }
 
   @Override
