@@ -377,9 +377,9 @@ public class YouTubeV3PublicationServiceImpl
 
         // Now Playlists Logic:
         // 1.- Obtain the Opencast Playlists this video belongs to.
-        // 2.- Loop through these Opencast playlists checking if they are in YouTube
+        // 2.- Loop through these Opencast playlists checking if they are in YouTube.
         // 3.- If a Playlist is already in YouTube, then we assign this video to this Playlist
-        // 4.- If a Playlist does not exist in YouTube, we create it and after that, assign video.
+        // 4.- If a Playlist does not exist in YouTube, nothing else to do.
         List<org.opencastproject.playlists.Playlist> pls = playlistService.getEventPlaylists(mediaPackageId);
         for (org.opencastproject.playlists.Playlist playlist : pls) {
           String ytPlaylistId = playlistService.getYoutubePlaylistId(playlist.getId());
@@ -415,7 +415,7 @@ public class YouTubeV3PublicationServiceImpl
     }
   }
 
-  public Boolean ytVideoExistsInytPlaylist(String ytPlaylist, String ytVideo) throws IOException {
+  private Boolean ytVideoExistsInytPlaylist(String ytPlaylist, String ytVideo) throws IOException {
     final List<PlaylistItem> playlistItems = new LinkedList<PlaylistItem>();
     Boolean exists = false;
     boolean done = false;
