@@ -25,6 +25,7 @@ import static org.opencastproject.db.Queries.namedQuery;
 import org.opencastproject.db.DBSession;
 import org.opencastproject.db.DBSessionFactory;
 import org.opencastproject.playlists.Playlist;
+import org.opencastproject.playlists.PlaylistEntry;
 import org.opencastproject.security.api.SecurityService;
 import org.opencastproject.util.NotFoundException;
 import org.opencastproject.util.requests.SortCriterion;
@@ -231,6 +232,68 @@ public class PlaylistDatabaseServiceImpl implements PlaylistDatabaseService {
       });
     } catch (Exception e) {
       throw new PlaylistDatabaseException("Could not delete playlist with ID '" + playlist.getId() + "'", e);
+    }
+  }
+
+  /**
+   * {@inheritDoc}
+   * @see PlaylistDatabaseService#getYoutubePlaylistId(String)
+   */
+  @Override
+  public String getYoutubePlaylistId(String playlistId) throws NotFoundException, PlaylistDatabaseException {
+    try {
+      return db.execChecked(em -> {
+        Optional<Playlist> playlist = getPlaylistById(playlistId, securityService.getOrganization().getId()).apply(em);
+        if (playlist.isEmpty()) {
+          throw new NotFoundException("No playlist with id=" + playlistId + " exists");
+        }
+        return playlist.get().getYouTubePlaylistId();
+      });
+    } catch (Exception e) {
+      throw new PlaylistDatabaseException("Error retrieving youtubePlaylistID for playlist '" + playlistId + "'", e);
+    }
+  }
+
+  /**
+   * {@inheritDoc}
+   * @see PlaylistDatabaseService#setYoutubePlaylistId(String, String)
+   */
+  @Override
+  public void setYoutubePlaylistId(String playlistId, String youtubePlaylistId) throws NotFoundException,
+            PlaylistDatabaseException {
+    try {
+      db.execTxChecked(em -> {
+        Optional<Playlist> playlist = getPlaylistById(playlistId, securityService.getOrganization().getId()).apply(em);
+        if (playlist.isEmpty()) {
+          throw new NotFoundException("No playlist with id=" + playlistId + " exists");
+        }
+        playlist.get().setYouTubePlaylistId(youtubePlaylistId);
+      });
+    } catch (Exception e) {
+      throw new PlaylistDatabaseException("Error retrieving youtubePlaylistID for playlist '" + playlistId + "'", e);
+    }
+  }
+
+  /**
+   * {@inheritDoc}
+   * @see PlaylistDatabaseService#getPlaylistsByMediapackageId(String)
+   */
+  @Override
+  public List<Playlist> getPlaylistsByMediapackageId(String mediaPackageId) throws PlaylistDatabaseException {
+    try {
+      return db.exec(em -> {
+        final var criteriaBuilder = em.getCriteriaBuilder();
+        final var criteriaQuery = criteriaBuilder.createQuery(Playlist.class);
+        Root<Playlist> p = criteriaQuery.from(Playlist.class);
+        final var subCriteriaQuery = criteriaQuery.subquery(String.class);
+        Root<PlaylistEntry> pe = subCriteriaQuery.from(PlaylistEntry.class);
+        subCriteriaQuery.select(pe.get("playlist").get("id"))
+            .where(criteriaBuilder.equal(pe.get("contentId"), mediaPackageId));
+        criteriaQuery.select(p).where(p.get("id").in(subCriteriaQuery));
+        return em.createQuery(criteriaQuery).getResultList();
+      });
+    } catch (Exception e) {
+      throw new PlaylistDatabaseException("Error fetching playlists from database", e);
     }
   }
 
