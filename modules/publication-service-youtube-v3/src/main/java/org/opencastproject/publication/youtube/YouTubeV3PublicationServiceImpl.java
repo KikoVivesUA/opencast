@@ -30,6 +30,7 @@ import org.opencastproject.mediapackage.MediaPackageParser;
 import org.opencastproject.mediapackage.Publication;
 import org.opencastproject.mediapackage.PublicationImpl;
 import org.opencastproject.mediapackage.Track;
+import org.opencastproject.playlists.PlaylistService;
 import org.opencastproject.publication.api.PublicationException;
 import org.opencastproject.publication.api.YouTubePublicationService;
 import org.opencastproject.publication.youtube.auth.ClientCredentials;
@@ -40,10 +41,13 @@ import org.opencastproject.serviceregistry.api.ServiceRegistry;
 import org.opencastproject.serviceregistry.api.ServiceRegistryException;
 import org.opencastproject.util.LoadUtil;
 import org.opencastproject.util.MimeTypes;
+import org.opencastproject.util.NotFoundException;
 import org.opencastproject.util.XProperties;
 import org.opencastproject.workspace.api.Workspace;
 
 import com.google.api.services.youtube.model.Playlist;
+import com.google.api.services.youtube.model.PlaylistItem;
+import com.google.api.services.youtube.model.PlaylistItemListResponse;
 import com.google.api.services.youtube.model.SearchResult;
 import com.google.api.services.youtube.model.Video;
 
@@ -60,11 +64,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.Dictionary;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.UUID;
 
@@ -116,7 +122,7 @@ public class YouTubeV3PublicationServiceImpl
 
   /** List of available operations on jobs */
   private enum Operation {
-    Publish, Retract
+    Publish, Retract, CreatePlaylist, DeletePlaylistByTitle
   }
 
   /** workspace instance */
@@ -155,6 +161,9 @@ public class YouTubeV3PublicationServiceImpl
    * A value of zero will be treated as no limit
    */
   private int maxFieldLength;
+
+  @Reference
+  private PlaylistService playlistService;
 
   /**
    * Creates a new instance of the youtube publication service.
@@ -236,10 +245,25 @@ public class YouTubeV3PublicationServiceImpl
     } else {
       throw new IllegalArgumentException("Mediapackage does not contain track " + track.getIdentifier());
     }
-
   }
 
-  /**
+  @Override
+  public Job publish(final MediaPackage mediaPackage, final Track track, boolean useOpencastPlaylists)
+          throws PublicationException {
+    if (mediaPackage.contains(track)) {
+      try {
+        final List<String> args = Arrays.asList(MediaPackageParser.getAsXml(mediaPackage), track.getIdentifier(),
+            Boolean.toString(useOpencastPlaylists));
+        return serviceRegistry.createJob(JOB_TYPE, Operation.Publish.toString(), args, youtubePublishJobLoad);
+      } catch (ServiceRegistryException e) {
+        throw new PublicationException("Unable to create a job for track: " + track.toString(), e);
+      }
+    } else {
+      throw new IllegalArgumentException("Mediapackage does not contain track " + track.getIdentifier());
+    }
+  }
+
+   /**
    * Publishes the element to the publication channel and returns a reference to the published version of the element.
    *
    * @param job
@@ -252,8 +276,8 @@ public class YouTubeV3PublicationServiceImpl
    * @throws PublicationException
    *           if publication fails
    */
-  private Publication publish(final Job job, final MediaPackage mediaPackage, final String elementId)
-          throws PublicationException {
+  private Publication publish(final Job job, final MediaPackage mediaPackage, final String elementId,
+      boolean useOpencastPlaylists) throws PublicationException {
     if (mediaPackage == null) {
       throw new IllegalArgumentException("Mediapackage must be specified");
     } else if (elementId == null) {
@@ -270,41 +294,113 @@ public class YouTubeV3PublicationServiceImpl
       throw new IllegalArgumentException("Mediapackage element cannot be XML");
     }
     try {
-      // create context strategy for publication
-      final YouTubePublicationAdapter c = new YouTubePublicationAdapter(mediaPackage, workspace);
-      final File file = workspace.get(element.getURI());
-      final String episodeName = c.getEpisodeName();
-      final UploadProgressListener operationProgressListener = new UploadProgressListener(mediaPackage, file);
-      final String privacyStatus = makeVideosPrivate ? "private" : "public";
-      final VideoUpload videoUpload = new VideoUpload(
-          truncateTitleToMaxFieldLength(episodeName, false),
-          c.getEpisodeDescription(), privacyStatus,
-          file, operationProgressListener, tags);
-      final Video video = youTubeService.addVideoToMyChannel(videoUpload);
-      final int timeoutMinutes = 60;
-      final long startUploadMilliseconds = new Date().getTime();
-      while (!operationProgressListener.isComplete()) {
-        Thread.sleep(POLL_MILLISECONDS);
-        final long howLongWaitingMinutes = (new Date().getTime() - startUploadMilliseconds) / 60000;
-        if (howLongWaitingMinutes > timeoutMinutes) {
-          throw new PublicationException(
-              "Upload to YouTube exceeded " + timeoutMinutes + " minutes for episode " + episodeName);
+      Video video = null;
+      if (!useOpencastPlaylists) {
+        logger.info("Param 'useOpencastPlaylists' is FALSE.");
+        // create context strategy for publication
+        final YouTubePublicationAdapter c = new YouTubePublicationAdapter(mediaPackage, workspace);
+        final File file = workspace.get(element.getURI());
+        final String episodeName = c.getEpisodeName();
+        final UploadProgressListener operationProgressListener = new UploadProgressListener(mediaPackage, file);
+        final String privacyStatus = makeVideosPrivate ? "private" : "public";
+        final VideoUpload videoUpload = new VideoUpload(
+            truncateTitleToMaxFieldLength(episodeName, false),
+            c.getEpisodeDescription(), privacyStatus,
+            file, operationProgressListener, tags);
+        video = youTubeService.addVideoToMyChannel(videoUpload);
+        final int timeoutMinutes = 60;
+        final long startUploadMilliseconds = new Date().getTime();
+        while (!operationProgressListener.isComplete()) {
+          Thread.sleep(POLL_MILLISECONDS);
+          final long howLongWaitingMinutes = (new Date().getTime() - startUploadMilliseconds) / 60000;
+          if (howLongWaitingMinutes > timeoutMinutes) {
+            throw new PublicationException(
+                "Upload to YouTube exceeded " + timeoutMinutes + " minutes for episode " + episodeName);
+          }
         }
-      }
-      String playlistName = StringUtils.trimToNull(truncateTitleToMaxFieldLength(mediaPackage.getSeriesTitle(), true));
-      playlistName = (playlistName == null) ? this.defaultPlaylist : playlistName;
-      final Playlist playlist;
-      final Playlist existingPlaylist = youTubeService.getMyPlaylistByTitle(playlistName);
-      if (existingPlaylist == null) {
-        playlist = youTubeService.createPlaylist(playlistName, c.getContextDescription(), mediaPackage.getSeries());
+        String playlistName = StringUtils.trimToNull(truncateTitleToMaxFieldLength(mediaPackage.getSeriesTitle(),
+            true));
+        playlistName = (playlistName == null) ? this.defaultPlaylist : playlistName;
+        final Playlist playlist;
+        final Playlist existingPlaylist = youTubeService.getMyPlaylistByTitle(playlistName);
+        if (existingPlaylist == null) {
+          playlist = youTubeService.createPlaylist(playlistName, c.getContextDescription(), mediaPackage.getSeries());
+        } else {
+          playlist = existingPlaylist;
+        }
+        youTubeService.addPlaylistItem(playlist.getId(), video.getId());
+        // Create new publication element
+        final URL url = new URL("http://www.youtube.com/watch?v=" + video.getId());
+        return PublicationImpl.publication(
+            UUID.randomUUID().toString(), CHANNEL_NAME, url.toURI(), MimeTypes.parseMimeType(MIME_TYPE));
       } else {
-        playlist = existingPlaylist;
+        final String mediaPackageId = mediaPackage.getIdentifier().toString();
+        String ytVideoID = "";
+        logger.info("Param 'useOpencastPlaylists' is TRUE. Getting Event '{}' OC playlists.", mediaPackageId);
+        // First we check if the video is already in Youtube:
+        boolean alreadyInYoutube = false;
+        Publication[] publications = mediaPackage.getPublications();
+        for (Publication pub : publications) {
+          String channel = pub.getChannel();
+          if ("youtube".equalsIgnoreCase(channel)) {
+            alreadyInYoutube = true;
+            ytVideoID = pub.getURI().toString().replace("http://www.youtube.com/watch?v=","");
+            logger.info("Mediapackage '{}' is already published in YouTube.", mediaPackage.getIdentifier());
+          }
+        }
+        // If the video is not in YouTube, first it is uploaded:
+        if (!alreadyInYoutube) {
+          logger.info("Mediapackage '{}' is NOT in YouTube. First upload it. ", mediaPackage.getIdentifier());
+          // create context strategy for publication
+          final YouTubePublicationAdapter c = new YouTubePublicationAdapter(mediaPackage, workspace);
+          final File file = workspace.get(element.getURI());
+          final String episodeName = c.getEpisodeName();
+          final UploadProgressListener operationProgressListener = new UploadProgressListener(mediaPackage, file);
+          final String privacyStatus = makeVideosPrivate ? "private" : "public";
+          final VideoUpload videoUpload = new VideoUpload(
+              truncateTitleToMaxFieldLength(episodeName, false),
+              c.getEpisodeDescription(), privacyStatus,
+              file, operationProgressListener, tags);
+          video = youTubeService.addVideoToMyChannel(videoUpload);
+          ytVideoID = video.getId();
+          final int timeoutMinutes = 60;
+          final long startUploadMilliseconds = new Date().getTime();
+          while (!operationProgressListener.isComplete()) {
+            Thread.sleep(POLL_MILLISECONDS);
+            final long howLongWaitingMinutes = (new Date().getTime() - startUploadMilliseconds) / 60000;
+            if (howLongWaitingMinutes > timeoutMinutes) {
+              throw new PublicationException(
+                  "Upload to YouTube exceeded " + timeoutMinutes + " minutes for episode " + episodeName);
+            }
+          }
+        }
+
+        // Now Playlists Logic:
+        // 1.- Obtain the Opencast Playlists this video belongs to.
+        // 2.- Loop through these Opencast playlists checking if they are in YouTube.
+        // 3.- If a Playlist is already in YouTube, then we assign this video to this Playlist
+        // 4.- If a Playlist does not exist in YouTube, nothing else to do.
+        List<org.opencastproject.playlists.Playlist> pls = playlistService.getEventPlaylists(mediaPackageId);
+        for (org.opencastproject.playlists.Playlist playlist : pls) {
+          String ytPlaylistId = playlistService.getYoutubePlaylistId(playlist.getId());
+          if (ytPlaylistId != null && !ytPlaylistId.isEmpty()) {
+            if (!ytVideoExistsInytPlaylist(ytPlaylistId, ytVideoID)) {
+              youTubeService.addPlaylistItem(ytPlaylistId, ytVideoID);
+              logger.info("OC playlist '{}' is already in YouTube as '{}'. Assigning video to this playlist.",
+                  playlist.getId(), ytPlaylistId);
+            } else {
+              logger.info("OC playlist '{}' is already in YouTube as '{}' but ytVideo '{}' is already in it.",
+                  playlist.getId(), ytPlaylistId, ytVideoID);
+            }
+          } else {
+            logger.info("OC playlist '{}' does not exist in YouTube. Nothing else to do.", playlist.getId());
+          }
+        }
+        // Create new publication element
+        final URL url = new URL("http://www.youtube.com/watch?v=" + ytVideoID);
+        return PublicationImpl.publication(
+            UUID.randomUUID().toString(), CHANNEL_NAME, url.toURI(), MimeTypes.parseMimeType(MIME_TYPE));
       }
-      youTubeService.addPlaylistItem(playlist.getId(), video.getId());
-      // Create new publication element
-      final URL url = new URL("http://www.youtube.com/watch?v=" + video.getId());
-      return PublicationImpl.publication(
-          UUID.randomUUID().toString(), CHANNEL_NAME, url.toURI(), MimeTypes.parseMimeType(MIME_TYPE));
     } catch (Exception e) {
       logger.error("failed publishing to YouTube", e);
       logger.warn("Error publishing {}, {}", element, e.getMessage());
@@ -317,6 +413,29 @@ public class YouTubeV3PublicationServiceImpl
             e);
       }
     }
+  }
+
+  private Boolean ytVideoExistsInytPlaylist(String ytPlaylist, String ytVideo) throws IOException {
+    final List<PlaylistItem> playlistItems = new LinkedList<PlaylistItem>();
+    Boolean exists = false;
+    boolean done = false;
+    String nextPageToken = null;
+    while (!done) {
+      final PlaylistItemListResponse searchResult = youTubeService.getPlaylistItems(ytPlaylist, nextPageToken, 50);
+      playlistItems.addAll(searchResult.getItems());
+      nextPageToken = searchResult.getNextPageToken();
+      done = nextPageToken == null;
+    }
+
+    PlaylistItem playlistItem = null;
+    for (final PlaylistItem next : playlistItems) {
+      final String id = next.getSnippet().getResourceId().getVideoId();
+      if (ytVideo.equals(id)) {
+        exists = true;
+        break;
+      }
+    }
+    return exists;
   }
 
   @Override
@@ -381,6 +500,86 @@ public class YouTubeV3PublicationServiceImpl
   }
 
   /**
+   * Publishes an Opencast Playlist to YouTube
+   *
+   * @param opencastPlaylistId
+   *          the Opencast Playlist Id
+   * @throws PublicationException
+   *           if publication fails
+   */
+  public void publishOpencastPlaylist(final String opencastPlaylistId) throws PublicationException {
+    if (opencastPlaylistId == null) {
+      throw new IllegalArgumentException("Opencast Playlist Id must be specified");
+    }
+    try {
+      // Get the Opencast Playlist
+      org.opencastproject.playlists.Playlist ocpl = playlistService.getPlaylistById(opencastPlaylistId);
+      if (ocpl != null) {
+        // It is already in YouTube?
+        final String ytPlaylitsId = playlistService.getYoutubePlaylistId(opencastPlaylistId);
+        final Playlist playlist;
+        if (ytPlaylitsId.isEmpty()) {
+          logger.info("Creating Opencast playlist {} in YouTube.", opencastPlaylistId);
+          final String plTitle = StringUtils.trimToNull(truncateTitleToMaxFieldLength(ocpl.getTitle(),
+              true));
+          playlist = youTubeService.createPlaylist(plTitle, ocpl.getDescription());
+          playlistService.setYoutubePlaylistId(opencastPlaylistId, playlist.getId());
+        }
+      } else {
+        throw new NotFoundException("Opencast Playlist '" + opencastPlaylistId + "' not found.");
+      }
+    } catch (Exception e) {
+      throw new PublicationException("Error publishing playlist in YouTube", e);
+    }
+  }
+
+  public Playlist createPlaylist(String title, String description, String... tags) throws PublicationException {
+    logger.info("Creating playlist with title '{}'", title);
+
+    if (title == null || title.trim().isEmpty()) {
+      throw new PublicationException("Title cannot be empty");
+    }
+
+    try {
+      Playlist playlist = youTubeService.createPlaylist(title, description, tags);
+      logger.info("Created playlist: {}", playlist.getId());
+      return playlist;
+    } catch (IOException e) {
+      throw new PublicationException("Error creating playlist in YouTube", e);
+    }
+  }
+
+  public void deletePlaylistByTitle(String title) throws PublicationException {
+    logger.info("Deleting playlist with title '{}'", title);
+
+    if (title == null || title.trim().isEmpty()) {
+      throw new PublicationException("Title cannot be empty");
+    }
+
+    try {
+      String playListID = youTubeService.getMyPlaylistByTitle(title).getId();
+      youTubeService.removeMyPlaylist(playListID);
+      logger.info("Deleted Playlist: {}", playListID);
+    } catch (IOException e) {
+      throw new PublicationException("Error deleting playlist in YouTube", e);
+    }
+  }
+
+  public void deletePlaylistByID(String playlistID) throws PublicationException {
+    logger.info("Deleting playlist with ID '{}'", playlistID);
+
+    if (playlistID == null || playlistID.trim().isEmpty()) {
+      throw new PublicationException("Playlist ID cannot be empty");
+    }
+
+    try {
+      youTubeService.removeMyPlaylist(playlistID);
+      logger.info("Deleted Playlist with ID: {}", playlistID);
+    } catch (IOException e) {
+      throw new PublicationException("Error deleting playlist in YouTube", e);
+    }
+  }
+  /**
    * {@inheritDoc}
    *
    * @see org.opencastproject.job.api.AbstractJobProducer#process(org.opencastproject.job.api.Job)
@@ -392,9 +591,10 @@ public class YouTubeV3PublicationServiceImpl
       op = Operation.valueOf(job.getOperation());
       List<String> arguments = job.getArguments();
       MediaPackage mediapackage = MediaPackageParser.getFromXml(arguments.get(0));
+      boolean useOpencastPlaylists = Boolean.parseBoolean(arguments.get(2));
       switch (op) {
         case Publish:
-          Publication publicationElement = publish(job, mediapackage, arguments.get(1));
+          Publication publicationElement = publish(job, mediapackage, arguments.get(1), useOpencastPlaylists);
           return (publicationElement == null) ? null : MediaPackageElementParser.getAsXml(publicationElement);
         case Retract:
           Publication retractedElement = retract(job, mediapackage);

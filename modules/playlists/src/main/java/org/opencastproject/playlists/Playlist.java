@@ -128,6 +128,19 @@ public class Playlist {
   }
 
   public Playlist(String id, String organization, List<PlaylistEntry> entries, String title, String description,
+      String creator, Date updated, List<PlaylistAccessControlEntry> accessControlEntries) {
+    this.id = id;
+    this.organization = organization;
+    this.entries = entries;
+    this.title = title;
+    this.description = description;
+    this.creator = creator;
+    this.updated = updated;
+    this.accessControlEntries = accessControlEntries;
+    this.youTubePlaylistId = null;
+  }
+
+  public Playlist(String id, String organization, List<PlaylistEntry> entries, String title, String description,
       String creator, Date updated, List<PlaylistAccessControlEntry> accessControlEntries, String youTubePlaylistId) {
     this.id = id;
     this.organization = organization;
