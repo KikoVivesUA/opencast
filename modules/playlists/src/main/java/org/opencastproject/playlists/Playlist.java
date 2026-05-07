@@ -117,6 +117,9 @@ public class Playlist {
   @OrderColumn(name = "position_access_control_entries")
   private List<PlaylistAccessControlEntry> accessControlEntries = new ArrayList<>();
 
+  @Column(name = "youTubePlaylistId")
+  private String youTubePlaylistId;
+
   /**
    * Default constructor
    */
@@ -125,7 +128,7 @@ public class Playlist {
   }
 
   public Playlist(String id, String organization, List<PlaylistEntry> entries, String title, String description,
-      String creator, Date updated, List<PlaylistAccessControlEntry> accessControlEntries) {
+      String creator, Date updated, List<PlaylistAccessControlEntry> accessControlEntries, String youTubePlaylistId) {
     this.id = id;
     this.organization = organization;
     this.entries = entries;
@@ -134,6 +137,7 @@ public class Playlist {
     this.creator = creator;
     this.updated = updated;
     this.accessControlEntries = accessControlEntries;
+    this.youTubePlaylistId = youTubePlaylistId;
   }
 
   public String getId() {
@@ -236,5 +240,12 @@ public class Playlist {
     this.accessControlEntries = accessControlEntries;
   }
 
+  public String getYouTubePlaylistId() {
+    return youTubePlaylistId;
+  }
+
+  public void setYouTubePlaylistId(String youTubePlaylistId) {
+    this.youTubePlaylistId = youTubePlaylistId;
+  }
 
 }

@@ -146,6 +146,64 @@ public class PlaylistService {
   }
 
   /**
+   * Returns the list of Playlists a mediapackage belongs to
+   * @param mediaPackageId mediapackage id
+   * @return A list of {@link Playlist}s
+   * @throws IllegalStateException If something went wrong in the database service
+   */
+  public List<Playlist> getEventPlaylists(String mediaPackageId) throws IllegalStateException {
+    try {
+      List<Playlist> playlists = persistence.getPlaylistsByMediapackageId(mediaPackageId);
+      playlists.removeIf(playlist -> !checkPermission(playlist, Permissions.Action.READ));
+      return playlists;
+    } catch (PlaylistDatabaseException e) {
+      throw new IllegalStateException("Could not get playlist from database with id ", e);
+    }
+  }
+
+  /**
+   * Updates an Opencast playlist with a YouTube Playlist Id
+   * @param playlistId Id of the Opencast Playlist.
+   * @param youTubePlaylistId Id of the YouTube Playlist.
+   * @throws NotFoundException If no playlist with the given id could be found
+   * @throws IllegalStateException If something went wrong in the database service
+   * @throws UnauthorizedException If the user does not have write access for the playlist
+   */
+  public void setYoutubePlaylistId(String playlistId, String youTubePlaylistId)
+            throws NotFoundException, IllegalStateException, UnauthorizedException {
+    try {
+      Playlist existingPlaylist = persistence.getPlaylist(playlistId);
+      if (!checkPermission(existingPlaylist, Permissions.Action.WRITE)) {
+        throw new UnauthorizedException("User does not have write permissions");
+      }
+      persistence.setYoutubePlaylistId(playlistId, youTubePlaylistId);
+    } catch (PlaylistDatabaseException e) {
+      throw new IllegalStateException("Could not get playlist from database with id ", e);
+    }
+  }
+
+  /**
+   * Updates an Opencast playlist with a YouTube Playlist Id
+   * @param playlistId Id of the Opencast Playlist.
+   * @return youTubePlaylist ID if exists
+   * @throws NotFoundException If no playlist with the given id could be found
+   * @throws IllegalStateException If something went wrong in the database service
+   * @throws UnauthorizedException If the user does not have read access for the playlist
+   */
+  public String getYoutubePlaylistId(String playlistId)
+            throws NotFoundException, IllegalStateException, UnauthorizedException {
+    try {
+      Playlist existingPlaylist = persistence.getPlaylist(playlistId);
+      if (!checkPermission(existingPlaylist, Permissions.Action.READ)) {
+        throw new UnauthorizedException("User does not have read permissions");
+      }
+      return persistence.getYoutubePlaylistId(playlistId);
+    } catch (PlaylistDatabaseException e) {
+      throw new IllegalStateException("Could not get playlist from database with id ", e);
+    }
+  }
+
+  /**
    * Get multiple playlists from the database
    * @param limit The maximum amount of playlists to get with one request.
    * @param offset The index of the first result to return.

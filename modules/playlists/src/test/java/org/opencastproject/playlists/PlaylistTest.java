@@ -39,7 +39,9 @@ public class PlaylistTest {
   public void testPlaylist() throws Exception {
     Playlist playlist = new Playlist();
     playlist.setTitle("title");
+    playlist.setYouTubePlaylistId("youtubeplaylistid");
     Assert.assertEquals(playlist.getTitle(), "title");
+    Assert.assertEquals(playlist.getYouTubePlaylistId(), "youtubeplaylistid");
   }
 
   @Test
@@ -89,6 +91,7 @@ public class PlaylistTest {
     playlist.setDescription("description");
     playlist.setCreator("creator");
     playlist.setUpdated(new Date(1701361007521L));
+    playlist.setYouTubePlaylistId("youtubeplaylistid");
     playlist.setAccessControlEntries(playlistAccessControlEntries);
 
     JaxbPlaylist jaxbPlaylist = new JaxbPlaylist(playlist);
@@ -101,6 +104,7 @@ public class PlaylistTest {
     Playlist playlistParsed = jaxbPlaylistParsed.toPlaylist();
 
     Assert.assertEquals(playlist.getTitle(), playlistParsed.getTitle());
+    Assert.assertEquals(playlist.getYouTubePlaylistId(), playlistParsed.getYouTubePlaylistId());
     Assert.assertEquals(playlist.getEntries().get(1).getContentId(), playlistParsed.getEntries().get(1).getContentId());
   }
 }

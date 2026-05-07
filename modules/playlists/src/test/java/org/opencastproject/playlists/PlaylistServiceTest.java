@@ -72,7 +72,9 @@ public class PlaylistServiceTest {
     playlist.setTitle("title");
     playlist.setDescription("description");
     playlist.setCreator("creator");
+    playlist.setYouTubePlaylistId("youtubeplaylistid");
     playlist.setUpdated(new Date(1701361007521L));
+
     playlist.setAccessControlEntries(playlistAccessControlEntries);
 
     // Playlist Service

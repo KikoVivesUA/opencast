@@ -68,6 +68,7 @@ public class PlaylistDatabaseServiceTest {
     testPlaylist.setDescription("description");
     testPlaylist.setCreator("creator");
     testPlaylist.setUpdated(new Date(1701361007521L));
+    testPlaylist.setYouTubePlaylistId("youtubeplaylistid");
     testPlaylist.setAccessControlEntries(playlistAccessControlEntries);
 
     // Mock security service
