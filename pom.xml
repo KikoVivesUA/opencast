@@ -42,7 +42,7 @@
     <httpcomponents-httpcore.version>4.4.16</httpcomponents-httpcore.version>
     <jackson.version>2.17.2</jackson.version>
     <jakarta.mail.version>1.6.7</jakarta.mail.version>
-    <java.release>21</java.release>
+    <java.release>17</java.release>
     <jersey.version>2.29.1</jersey.version>
     <jettison.version>1.5.4</jettison.version>
     <joda-time.version>2.14.0</joda-time.version>
@@ -745,11 +745,11 @@
           <artifactId>exec-maven-plugin</artifactId>
           <version>3.6.2</version>
         </plugin>
-        <!--<plugin>
+        <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-dependency-plugin</artifactId>
           <version>3.8.1</version>
-          <executions>
+          <!--<executions>
             <execution>
               <id>analyze</id>
               <goals>
@@ -759,8 +759,8 @@
                 <failOnWarning>true</failOnWarning>
               </configuration>
             </execution>
-          </executions>
-        </plugin>-->
+          </executions>-->
+        </plugin>
         <plugin>
           <groupId>org.apache.karaf.tooling</groupId>
           <artifactId>karaf-services-maven-plugin</artifactId>

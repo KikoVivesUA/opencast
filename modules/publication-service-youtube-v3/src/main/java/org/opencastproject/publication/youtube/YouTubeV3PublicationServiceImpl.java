@@ -520,10 +520,12 @@ public class YouTubeV3PublicationServiceImpl
         final Playlist playlist;
         if (ytPlaylitsId.isEmpty()) {
           logger.info("Creating Opencast playlist {} in YouTube.", opencastPlaylistId);
-          final String plTitle = StringUtils.trimToNull(truncateTitleToMaxFieldLength(ocpl.getTitle(),
-              true));
+          final String plTitle = StringUtils.trimToNull(
+              truncateTitleToMaxFieldLength(extraerNombreVertice(ocpl.getTitle()), true));
           playlist = youTubeService.createPlaylist(plTitle, ocpl.getDescription());
           playlistService.setYoutubePlaylistId(opencastPlaylistId, playlist.getId());
+          logger.info("Created YouTube playlist '{}' (id {}) for Opencast playlist {}",
+              plTitle, playlist.getId(), opencastPlaylistId);
         }
       } else {
         throw new NotFoundException("Opencast Playlist '" + opencastPlaylistId + "' not found.");
@@ -734,6 +736,23 @@ public class YouTubeV3PublicationServiceImpl
         throw new IllegalArgumentException("maxFieldLength must be greater than zero");
       }
     }
+  }
+
+  private static String extraerNombreVertice(String titulo) {
+    if (titulo == null) {
+      return null;
+    }
+    final String marca = "nombreVertice:";
+    int idx = titulo.indexOf(marca);
+    if (idx < 0) {
+      return titulo;
+    }
+    String resto = titulo.substring(idx + marca.length());
+    int fin = resto.indexOf('#');
+    if (fin >= 0) {
+      resto = resto.substring(0, fin);
+    }
+    return resto;
   }
 
 }

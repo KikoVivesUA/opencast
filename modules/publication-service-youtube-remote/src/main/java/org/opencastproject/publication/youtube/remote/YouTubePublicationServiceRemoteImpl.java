@@ -121,13 +121,14 @@ public class YouTubePublicationServiceRemoteImpl extends RemoteBase implements Y
   public void publishOpencastPlaylist(String opencastPlaylistId) throws PublicationException {
     List<BasicNameValuePair> params = new ArrayList<BasicNameValuePair>();
     params.add(new BasicNameValuePair("opencastPlaylistId", opencastPlaylistId));
-    HttpPost post = new HttpPost();
+    HttpPost post = new HttpPost("/publishOpencastPlaylist");
     HttpResponse response = null;
     try {
       post.setEntity(new UrlEncodedFormEntity(params, "UTF-8"));
       response = getResponse(post);
       if (response != null) {
         logger.info("Publishing playlist {} to youtube", opencastPlaylistId);
+        return;
       }
     } catch (Exception e) {
       throw new PublicationException("Unable to publish playlist " + opencastPlaylistId

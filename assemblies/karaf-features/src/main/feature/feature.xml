@@ -94,6 +94,9 @@
 
     <bundle>mvn:com.nimbusds/nimbus-jose-jwt/10.4.2</bundle>
     <bundle>wrap:mvn:com.google.crypto.tink/tink/1.16.0$Bundle-SymbolicName=com.google.crypto.tink;Bundle-Version=1.16.0</bundle>
+    <bundle>wrap:mvn:com.google.apis/google-api-services-youtube/v3-rev183-1.22.0</bundle>
+    <bundle>wrap:mvn:com.google.api-client/google-api-client/1.22.0</bundle>
+    <bundle>wrap:mvn:com.google.http-client/google-http-client/1.22.0</bundle> 
   </feature>
 
   <feature name="opencast-core" version="${project.version}">
@@ -446,6 +449,7 @@
     <bundle start-level="82">mvn:org.opencastproject/opencast-publication-service-configurable/${project.version}</bundle>
     <bundle start-level="82">mvn:org.opencastproject/opencast-publication-service-oaipmh/${project.version}</bundle>
     <bundle start-level="82">mvn:org.opencastproject/opencast-publication-service-youtube-remote/${project.version}</bundle>
+    <bundle start-level="82">mvn:org.opencastproject/opencast-publication-service-youtube-v3/${project.version}</bundle>
     <bundle start-level="82">mvn:org.opencastproject/opencast-runtime-info-ui/${project.version}</bundle>
     <bundle start-level="82">mvn:org.opencastproject/opencast-runtime-info-openapi-ui/${project.version}</bundle>
     <bundle start-level="82">mvn:org.opencastproject/opencast-rename-files-workflowoperation/${project.version}</bundle>
